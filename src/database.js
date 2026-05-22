@@ -1,40 +1,13 @@
 require('dotenv').config();
-const mysql = require('mysql2/promise');
-const { PrismaMariaDb } = require('@prisma/adapter-mariadb');
+const { PrismaPg } = require('@prisma/adapter-pg');
 const { PrismaClient } = require('@prisma/client');
 const { execSync } = require('child_process');
 
-const adapter = new PrismaMariaDb({
-  host:            process.env.DB_HOST,
-  port:            Number(process.env.DB_PORT),
-  user:            process.env.DB_USER,
-  password:        process.env.DB_PASSWORD,
-  database:        process.env.DB_NAME,
-  connectionLimit: 5,
-});
-
+const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
 const prisma = new PrismaClient({ adapter });
-
-async function createDatabaseIfNotExists() {
-  const connection = await mysql.createConnection({
-    host:     process.env.DB_HOST,
-    port:     Number(process.env.DB_PORT),
-    user:     process.env.DB_USER,
-    password: process.env.DB_PASSWORD,
-  });
-
-  await connection.execute(
-    `CREATE DATABASE IF NOT EXISTS \`${process.env.DB_NAME}\``
-  );
-
-  console.log(`✅ Database "${process.env.DB_NAME}" ready`);
-  await connection.end();
-}
 
 async function initialize() {
   try {
-    await createDatabaseIfNotExists();
-
     console.log('⏳ Running migrations...');
     execSync('npx prisma migrate deploy', { stdio: 'inherit' });
 

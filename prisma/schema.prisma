@@ -3,11 +3,10 @@ generator client {
 }
 
 datasource db {
-  provider = "mysql"
+  provider = "postgresql"
 }
 
-/// This model has been renamed to 'SchoolClass' during introspection, because the original name 'class' is reserved.
-model SchoolClass  {
+model SchoolClass {
   class_id       Int        @id @default(autoincrement())
   name           String     @db.VarChar(50)
   room_number    String?    @db.VarChar(20)
@@ -17,39 +16,39 @@ model SchoolClass  {
   subjects       subjects   @relation(fields: [subject_code], references: [subject_code], map: "fk_class_subject")
   enrolled       enrolled[]
 
-  @@index([subject_code], map: "fk_class_subject")
+  @@index([subject_code])
   @@map("class")
 }
 
 model enrolled {
-  student_code    String       @db.VarChar(20)
+  student_code    String    @db.VarChar(20)
   class_id        Int
-  enrollment_date DateTime?    @default(now()) @db.Timestamp(0)
-  SchoolClass    SchoolClass @relation(fields: [class_id], references: [class_id], onUpdate: NoAction, map: "fk_enrolled_class")
-  students        students     @relation(fields: [student_code], references: [student_code], onDelete: Cascade, onUpdate: NoAction, map: "fk_enrolled_student")
+  enrollment_date DateTime? @default(now())
+  SchoolClass     SchoolClass @relation(fields: [class_id], references: [class_id], onUpdate: NoAction, map: "fk_enrolled_class")
+  students        students    @relation(fields: [student_code], references: [student_code], onDelete: Cascade, onUpdate: NoAction, map: "fk_enrolled_student")
 
   @@id([student_code, class_id])
-  @@index([class_id], map: "fk_enrolled_class")
+  @@index([class_id])
 }
 
 model students {
-  id           Int        @id @default(autoincrement())
-  name         String     @db.VarChar(100)
-  email        String     @unique(map: "email") @db.VarChar(100)
-  student_code String     @unique(map: "student_code") @db.VarChar(20)
-  major        String?    @db.VarChar(100)
-  phone        String?    @db.VarChar(20)
-  created_at   DateTime?  @default(now()) @db.Timestamp(0)
+  id           Int       @id @default(autoincrement())
+  name         String    @db.VarChar(100)
+  email        String    @unique @db.VarChar(100)
+  student_code String    @unique @db.VarChar(20)
+  major        String?   @db.VarChar(100)
+  phone        String?   @db.VarChar(20)
+  created_at   DateTime? @default(now())
   enrolled     enrolled[]
 }
 
 model subjects {
-  name         String           @db.VarChar(100)
-  subject_code String           @id @db.VarChar(20)
+  name         String          @db.VarChar(100)
+  subject_code String          @id @db.VarChar(20)
   credit       Int
   status       subjects_status? @default(inactive)
-  created_at   DateTime?        @default(now()) @db.Timestamp(0)
-  SchoolClass SchoolClass[]
+  created_at   DateTime?       @default(now())
+  SchoolClass  SchoolClass[]
 }
 
 enum subjects_status {
