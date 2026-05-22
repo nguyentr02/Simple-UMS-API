@@ -6,11 +6,14 @@ const studentRoutes = require("./routes/students");
 const subjectRoutes = require("./routes/subjects.js");
 const classRoutes = require("./routes/class.js");
 const enrollRoutes = require("./routes/enroll.js");
+const cors = require('cors');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
+app.use(cors());
+
 
 // Serve swagger spec as JSON
 app.get("/api-docs/swagger.json", (req, res) => {
