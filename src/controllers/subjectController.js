@@ -1,49 +1,38 @@
-const { pool } = require("../config/db");
-
-
+const { prisma } = require("../database");
 
 /**
  * @openapi
  * /subject:
  *    get:
  *      summary: Get all subjects' information
- *      description: Get information of all subjects that are registered in the system. 
+ *      description: Get information of all subjects that are registered in the system.
  *      tags: [Subjects]
  *      responses:
- *        500: 
+ *        500:
  *          description: Error.
  */
-
 const getAllSubjects = async (req, res) => {
-  const connection = pool.getConnection();
-
   try {
-    (await connection).beginTransaction();
-    const [rows] = await connection.execute("SELECT * FROM subjects");
-    (await connection).commit();
-    res.json({ success: true, count: rows.length, data: rows });
+    const subjects = await prisma.subjects.findMany();
+    res.json({ success: true, count: subjects.length, data: subjects });
   } catch (error) {
-    (await connection).rollback();
     res.status(500).json({ success: false, message: error.message });
-  } finally {
-    connection.release();
   }
 };
-
 
 /**
  * @openapi
  * /subject/{subjectCode}:
  *    get:
- *      summary: Get all subject's information with subject code
- *      description: Get information of subject that are registered in the system with a unique ID code. 
+ *      summary: Get subject by subject code
+ *      description: Get information of subject with a unique ID code.
  *      tags: [Subjects]
  *      parameters:
  *        - in: path
  *          name: subjectCode
  *          required: true
  *          schema:
- *            type: integer
+ *            type: string
  *          description: The unique ID of the subject.
  *      responses:
  *       404:
@@ -51,31 +40,20 @@ const getAllSubjects = async (req, res) => {
  *       500:
  *         description: Error.
  */
-
 const getSubjectBySubjectCode = async (req, res) => {
-  const connection = pool.getConnection();
-
   const { subjectCode } = req.params;
   try {
-    (await connection).beginTransaction();
-    const [rows] = await connection.execute(
-      "SELECT * FROM subjects WHERE subject_code = ?",
-      [subjectCode],
-    );
-
-    if (rows.length === 0) {
-      (await connection).rollback();
+    const subject = await prisma.subjects.findUnique({
+      where: { subject_code: subjectCode },
+    });
+    if (!subject) {
       return res
         .status(404)
         .json({ success: false, message: "Cannot find Subject" });
     }
-    (await connection).commit();
-    res.json({ success: true, data: rows[0] });
+    res.json({ success: true, data: subject });
   } catch (error) {
-    (await connection).rollback();
     res.status(500).json({ success: false, message: error.message });
-  } finally {
-    (await connection).release();
   }
 };
 
@@ -112,25 +90,15 @@ const getSubjectBySubjectCode = async (req, res) => {
  *       500:
  *         description: Error.
  */
-
-// Need to add CHECKING DUPLICATION
 const createSubject = async (req, res) => {
-  const connection = pool.getConnection();
-
+  const { name, subject_code, credit } = req.body;
   try {
-    (await connection).beginTransaction();
-    const { name, subject_code, credit } = req.body;
-    const [result] = await connection.execute(
-      "INSERT INTO subjects (name, subject_code,credit) VALUES (?, ?, ?)",
-      [name, subject_code, credit],
-    );
-    (await connection).commit();
+    await prisma.subjects.create({
+      data: { name, subject_code, credit },
+    });
     res.status(201).json({ success: true, message: "Subject created" });
   } catch (error) {
-    (await connection).rollback();
     res.status(500).json({ success: false, message: error.message });
-  } finally {
-    connection.release();
   }
 };
 
@@ -139,7 +107,7 @@ const createSubject = async (req, res) => {
  * /subject/{subject_code}:
  *   put:
  *     summary: Update subject information
- *     description: Update subject information such as name, room number or capacity.
+ *     description: Update subject information such as name, credit or status.
  *     tags: [Subjects]
  *     parameters:
  *        - in: path
@@ -166,7 +134,7 @@ const createSubject = async (req, res) => {
  *                 type: integer
  *                 example: 20
  *               status:
- *                 type: integer
+ *                 type: string
  *                 enum: [active, inactive]
  *                 example: active
  *     responses:
@@ -175,42 +143,30 @@ const createSubject = async (req, res) => {
  *       500:
  *         description: Error.
  */
-
 const updateSubject = async (req, res) => {
-  const connection = pool.getConnection();
-
   const { subjectCode } = req.params;
+  const { name, subject_code, credit, status } = req.body;
   try {
-    const { name, subject_code, credit, status } = req.body;
-
-    const [existing] = await connection.execute(
-      "SELECT * FROM subjects WHERE subject_code = ?",
-      [subjectCode],
-    );
-    // Check exist
-    if (existing.length === 0) {
+    const existing = await prisma.subjects.findUnique({
+      where: { subject_code: subjectCode },
+    });
+    if (!existing) {
       return res
         .status(404)
         .json({ success: false, message: "Cannot find subject" });
     }
-
-    const currentSubject = existing[0];
-
-    const finalName = name !== undefined ? name : currentSubject.name;
-    const finalCredit = credit !== undefined ? credit : currentSubject.credit;
-    const finalStatus = status !== undefined ? status : currentSubject.status;
-    const finalSubjectCode =
-      subject_code !== undefined ? subject_code : currentSubject.subject_code;
-
-    const [result] = await connection.execute(
-      "UPDATE subjects SET name=?, subject_code=?, credit=?, status=? WHERE subject_code=?",
-      [finalName, finalSubjectCode, finalCredit, finalStatus, subjectCode],
-    );
+    await prisma.subjects.update({
+      where: { subject_code: subjectCode },
+      data: {
+        name: name ?? existing.name,
+        subject_code: subject_code ?? existing.subject_code,
+        credit: credit ?? existing.credit,
+        status: status ?? existing.status,
+      },
+    });
     res.json({ success: true, message: "Subject updated!" });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
-  } finally {
-    (await connection).release();
   }
 };
 
@@ -219,7 +175,7 @@ const updateSubject = async (req, res) => {
  * /subject/{subjectCode}:
  *   delete:
  *     summary: Delete a subject
- *     description: Delete a subject and its' enrollment.
+ *     description: Delete a subject and its enrollments.
  *     tags: [Subjects]
  *     parameters:
  *        - in: path
@@ -234,26 +190,21 @@ const updateSubject = async (req, res) => {
  *       500:
  *         description: Error.
  */
-
 const deleteSubject = async (req, res) => {
-  const connection = pool.getConnection();
-
   const { subjectCode } = req.params;
   try {
-    const [result] = await connection.execute(
-      "DELETE FROM subjects WHERE subject_code =?",
-      [subjectCode],
-    );
-    if (result.affectedRows === 0) {
+    const existing = await prisma.subjects.findUnique({
+      where: { subject_code: subjectCode },
+    });
+    if (!existing) {
       return res
         .status(404)
         .json({ success: false, message: "Subject not found" });
     }
+    await prisma.subjects.delete({ where: { subject_code: subjectCode } });
     res.json({ success: true, message: "Subject deleted" });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
-  } finally {
-    connection.release();
   }
 };
 

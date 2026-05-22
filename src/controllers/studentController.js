@@ -1,4 +1,4 @@
-const { pool } = require("../config/db");
+const { prisma } = require("../database");
 const { validationResult } = require("express-validator");
 
 /**
@@ -6,23 +6,15 @@ const { validationResult } = require("express-validator");
  * /student:
  *    get:
  *      summary: Get all students' information
- *      description: Get information of all students that are registered in the system. 
+ *      description: Get information of all students that are registered in the system.
  *      tags: [Students]
  */
-
 const getAllStudents = async (req, res) => {
-  const connection = await pool.getConnection();
-
   try {
-    await connection.beginTransaction();
-    const [rows] = await connection.execute("SELECT * FROM students");
-    (await connection).commit();
-    res.json({ success: true, count: rows.length, data: rows });
+    const students = await prisma.students.findMany();
+    res.json({ success: true, count: students.length, data: students });
   } catch (error) {
-    (await connection).rollback();
     res.status(500).json({ success: false, message: error.message });
-  } finally {
-    (await connection).release();
   }
 };
 
@@ -30,8 +22,8 @@ const getAllStudents = async (req, res) => {
  * @openapi
  * /student/{id}:
  *    get:
- *      summary: Get all students' information
- *      description: Get information of all students that are registered in the system. 
+ *      summary: Get student by ID
+ *      description: Get information of a student by their unique ID.
  *      tags: [Students]
  *      parameters:
  *        - in: path
@@ -41,37 +33,23 @@ const getAllStudents = async (req, res) => {
  *            type: integer
  *          description: The unique ID of the student.
  */
-
 const getStudentByID = async (req, res) => {
-  const connection = pool.getConnection();
-
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
     return res.status(400).json({ success: false, errors: errors.array() });
   }
-
   try {
-    (await connection).beginTransaction();
-    const [rows] = await connection.execute("SELECT * FROM students WHERE id = ?", [
-      req.params.id,
-    ]);
-
-    if (rows.length === 0) {
-      (await connection).rollback();
-      return res
-        .status(404)
-        .json({ success: false, message: "Student not found" });
+    const student = await prisma.students.findUnique({
+      where: { id: Number(req.params.id) },
+    });
+    if (!student) {
+      return res.status(404).json({ success: false, message: "Student not found" });
     }
-    (await connection).commit();
-    res.json({ success: true, data: rows[0] });
+    res.json({ success: true, data: student });
   } catch (error) {
-    (await connection).rollback();
     res.status(500).json({ success: false, message: error.message });
-  } finally {
-    (await connection).release();
   }
 };
-
 
 /**
  * @openapi
@@ -100,7 +78,7 @@ const getStudentByID = async (req, res) => {
  *                 type: string
  *                 example: STU102
  *               email:
- *                 type: email
+ *                 type: string
  *                 example: johnwick@dau.edu.vn
  *               major:
  *                 type: string
@@ -116,30 +94,19 @@ const getStudentByID = async (req, res) => {
  *       500:
  *         description: Error.
  */
-
 const createStudent = async (req, res) => {
-  const connection = await pool.getConnection();
-
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
     return res.status(400).json({ success: false, errors: errors.array() });
   }
+  const { name, email, student_code, major, phone } = req.body;
   try {
-    (await connection).beginTransaction();
-    const { name, email, student_code, major, phone } = req.body;
-    const [result] = await connection.execute(
-      "INSERT INTO students (name, email, student_code, major, phone) VALUES (?, ?, ?, ?, ?)",
-      [name, email, student_code, major, phone],
-    );
-    (await connection).commit();
-    res
-      .status(201)
-      .json({ success: true, message: "Student created", id: result.insertId });
+    const student = await prisma.students.create({
+      data: { name, email, student_code, major, phone },
+    });
+    res.status(201).json({ success: true, message: "Student created", id: student.id });
   } catch (error) {
-    (await connection).rollback();
     res.status(500).json({ success: false, message: error.message });
-  } finally {
-    (await connection).release();
   }
 };
 
@@ -148,7 +115,7 @@ const createStudent = async (req, res) => {
  * /student/{id}:
  *   put:
  *     summary: Update student information
- *     description: Update student information such as name, room number or capacity.
+ *     description: Update student information such as name, email, major or phone.
  *     tags: [Students]
  *     parameters:
  *        - in: path
@@ -169,7 +136,7 @@ const createStudent = async (req, res) => {
  *                 type: string
  *                 example: John Wick
  *               email:
- *                 type: email
+ *                 type: string
  *                 example: johnwick@dau.edu.vn
  *               major:
  *                 type: string
@@ -185,34 +152,31 @@ const createStudent = async (req, res) => {
  *       500:
  *         description: Error.
  */
-
 const updateStudent = async (req, res) => {
-  const connection = pool.getConnection();
-
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
     return res.status(400).json({ success: false, errors: errors.array() });
   }
+  const { name, email, major, phone } = req.body;
   try {
-    await connection.beginTransaction();
-    const { name, email, major, phone } = req.body;
-    const [result] = await connection.execute(
-      "UPDATE students SET name=?, email=?, major=?, phone=? WHERE id=?",
-      [name, email, major, phone, req.params.id],
-    );
-    if (result.affectedRows === 0) {
-      (await connection).rollback();
-      return res
-        .status(404)
-        .json({ success: false, message: "Student not found" });
+    const existing = await prisma.students.findUnique({
+      where: { id: Number(req.params.id) },
+    });
+    if (!existing) {
+      return res.status(404).json({ success: false, message: "Student not found" });
     }
-    await connection.commit();
+    await prisma.students.update({
+      where: { id: Number(req.params.id) },
+      data: {
+        name:  name  ?? existing.name,
+        email: email ?? existing.email,
+        major: major ?? existing.major,
+        phone: phone ?? existing.phone,
+      },
+    });
     res.json({ success: true, message: "Student updated!" });
   } catch (error) {
-    await connection.rollback();
     res.status(500).json({ success: false, message: error.message });
-  } finally {
-    connection.release();
   }
 };
 
@@ -221,7 +185,7 @@ const updateStudent = async (req, res) => {
  * /student/{id}:
  *   delete:
  *     summary: Delete a student
- *     description: Delete a student and his information.
+ *     description: Delete a student and their information.
  *     tags: [Students]
  *     parameters:
  *        - in: path
@@ -238,33 +202,22 @@ const updateStudent = async (req, res) => {
  *       500:
  *         description: Error.
  */
-
 const deleteStudent = async (req, res) => {
-  const connection = pool.getConnection();
-
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
     return res.status(400).json({ success: false, errors: errors.array() });
   }
-
   try {
-    (await connection).beginTransaction();
-    const [result] = await connection.execute("DELETE FROM students WHERE id =?", [
-      req.params.id,
-    ]);
-    if (result.affectedRows === 0) {
-      (await connection).rollback();
-      return res
-        .status(404)
-        .json({ success: false, message: "Student not found" });
+    const existing = await prisma.students.findUnique({
+      where: { id: Number(req.params.id) },
+    });
+    if (!existing) {
+      return res.status(404).json({ success: false, message: "Student not found" });
     }
-    (await connection).commit();
+    await prisma.students.delete({ where: { id: Number(req.params.id) } });
     res.json({ success: true, message: "Student deleted" });
   } catch (error) {
-    (await connection).rollback();
     res.status(500).json({ success: false, message: error.message });
-  } finally {
-    connection.release();
   }
 };
 

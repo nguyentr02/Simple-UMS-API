@@ -1,4 +1,4 @@
-const { pool } = require("../config/db");
+const { prisma } = require("../database");
 
 /**
  * @openapi
@@ -8,20 +8,12 @@ const { pool } = require("../config/db");
  *     description: Get information of all classes.
  *     tags: [Classes]
  */
-
-
 const getAllClass = async (req, res) => {
-  const connection = await pool.getConnection();
   try {
-    await connection.beginTransaction();
-    const [rows] = await connection.execute("SELECT * FROM class");
-    await connection.commit();
-    res.json({ success: true, count: rows.length, data: rows });
+    const classes = await prisma.schoolClass.findMany();
+    res.json({ success: true, count: classes.length, data: classes });
   } catch (error) {
-    await connection.rollback();
     res.status(500).json({ success: false, message: error.message });
-  } finally {
-    connection.release();
   }
 };
 
@@ -40,31 +32,20 @@ const getAllClass = async (req, res) => {
  *            type: string
  *          description: The unique ID of the subject of that class.
  */
-
 const getAllClassBySubjectCode = async (req, res) => {
-  const connection = await pool.getConnection();
-
   const { subjectCode } = req.params;
   try {
-    await (await connection).beginTransaction();
-    const [rows] = await connection.execute(
-      "SELECT * FROM class WHERE subject_code = ?",
-      [subjectCode],
-    );
-
-    if (rows.length === 0) {
-      await connection.rollback();
+    const classes = await prisma.schoolClass.findMany({
+      where: { subject_code: subjectCode },
+    });
+    if (classes.length === 0) {
       return res
         .status(404)
         .json({ success: false, message: "Cannot find class" });
     }
-    await connection.commit();
-    res.json({ success: true, data: rows });
+    res.json({ success: true, data: classes });
   } catch (error) {
-    await connection.rollback();
     res.status(500).json({ success: false, message: error.message });
-  } finally {
-    connection.release();
   }
 };
 
@@ -73,7 +54,7 @@ const getAllClassBySubjectCode = async (req, res) => {
  * /class:
  *   post:
  *     summary: Create class
- *     description: Registers a new class that match with an existent subject.
+ *     description: Registers a new class that matches with an existing subject.
  *     tags: [Classes]
  *     requestBody:
  *       required: true
@@ -92,7 +73,7 @@ const getAllClassBySubjectCode = async (req, res) => {
  *                 example: Computer Science for Beginner
  *               subject_code:
  *                 type: string
- *                 example: STU102
+ *                 example: COS101
  *               room_number:
  *                 type: string
  *                 example: LAB 202
@@ -105,38 +86,28 @@ const getAllClassBySubjectCode = async (req, res) => {
  *       500:
  *         description: Error.
  */
-
-// Need to add CHECKING DUPLICATION
 const createClass = async (req, res) => {
-  const connection = await pool.getConnection();
-
+  const { name, subject_code, room_number, capacity } = req.body;
   try {
-    await connection.beginTransaction();
-    const { name, subject_code, room_number, capacity } = req.body;
-    const [result] = await connection.execute(
-      "INSERT INTO class (name, subject_code,room_number, capacity) VALUES (?, ?, ?, ?)",
-      [name, subject_code, room_number, capacity],
-    );
-    await connection.commit();
+    await prisma.schoolClass.create({
+      data: { name, subject_code, room_number, capacity },
+    });
     res.status(201).json({ success: true, message: "Class created" });
   } catch (error) {
-    await connection.rollback();
     res.status(500).json({ success: false, message: error.message });
-  } finally {
-    connection.release();
   }
 };
 
 /**
  * @openapi
- * /class/{student_code}/{class_id}:
+ * /class/{classId}:
  *   put:
  *     summary: Update class information
  *     description: Update class information such as name, room number or capacity.
  *     tags: [Classes]
  *     parameters:
  *        - in: path
- *          name: class_id
+ *          name: classId
  *          required: true
  *          schema:
  *            type: integer
@@ -153,7 +124,7 @@ const createClass = async (req, res) => {
  *                 example: Computer Science for Beginners.
  *               subject_code:
  *                 type: string
- *                 example: STU101
+ *                 example: COS101
  *               room_number:
  *                 type: string
  *                 example: LAB 202
@@ -161,53 +132,35 @@ const createClass = async (req, res) => {
  *                 type: integer
  *                 example: 32
  *     responses:
- *       201:
- *         description: Enrollment updated successfully.
+ *       200:
+ *         description: Class updated successfully.
  *       404:
  *         description: Cannot find class.
  */
-
 const updateClass = async (req, res) => {
-  const connection = pool.getConnection();
-
   const { classId } = req.params;
+  const { name, subject_code, room_number, capacity } = req.body;
   try {
-    await connection.beginTransaction();
-    const { name, subject_code, room_number, capacity } = req.body;
-
-    const [existing] = await connection.execute(
-      "SELECT * FROM class WHERE class_id = ?",
-      [classId],
-    );
-    // Check exist
-    if (existing.length === 0) {
-      await connection.rollback();
+    const existing = await prisma.schoolClass.findUnique({
+      where: { class_id: Number(classId) },
+    });
+    if (!existing) {
       return res
         .status(404)
         .json({ success: false, message: "Cannot find class" });
     }
-
-    const currentClass = existing[0];
-
-    const finalName = name !== undefined ? name : currentClass.name;
-    const finalCapacity =
-      capacity !== undefined ? capacity : currentClass.capacity;
-    const finalRoomNumber =
-      room_number !== undefined ? room_number : currentClass.room_number;
-    const finalSubjectCode =
-      subject_code !== undefined ? subject_code : currentClass.subject_code;
-
-    const [result] = await connection.execute(
-      "UPDATE class SET name=?, subject_code=?, capacity=?, room_number=?, WHERE class_id=?",
-      [finalName, finalSubjectCode, finalCapacity, finalRoomNumber, classId],
-    );
-    await connection.commit();
+    await prisma.schoolClass.update({
+      where: { class_id: Number(classId) },
+      data: {
+        name: name ?? existing.name,
+        subject_code: subject_code ?? existing.subject_code,
+        room_number: room_number ?? existing.room_number,
+        capacity: capacity ?? existing.capacity,
+      },
+    });
     res.json({ success: true, message: "Class updated!" });
   } catch (error) {
-    await connection.rollback();
     res.status(500).json({ success: false, message: error.message });
-  } finally {
-    await connection.release();
   }
 };
 
@@ -216,7 +169,7 @@ const updateClass = async (req, res) => {
  * /class/{classId}:
  *   delete:
  *     summary: Delete a class
- *     description: Delete a class and its' enrollment.
+ *     description: Delete a class and its enrollments.
  *     tags: [Classes]
  *     parameters:
  *        - in: path
@@ -231,30 +184,21 @@ const updateClass = async (req, res) => {
  *       500:
  *         description: Error.
  */
-
 const deleteClass = async (req, res) => {
-  const connection = pool.getConnection();
-
   const { classId } = req.params;
   try {
-    await connection.beginTransaction;
-    const [result] = await connection.execute(
-      "DELETE FROM class WHERE class_id =?",
-      [classId],
-    );
-    if (result.affectedRows === 0) {
-      (await connection).rollback();
+    const existing = await prisma.schoolClass.findUnique({
+      where: { class_id: Number(classId) },
+    });
+    if (!existing) {
       return res
         .status(404)
         .json({ success: false, message: "Class not found" });
     }
-    (await connection).commit;
+    await prisma.schoolClass.delete({ where: { class_id: Number(classId) } });
     res.json({ success: true, message: "Class deleted" });
   } catch (error) {
-    (await connection).rollback();
     res.status(500).json({ success: false, message: error.message });
-  } finally {
-    (await connection).release();
   }
 };
 
