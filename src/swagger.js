@@ -1,10 +1,9 @@
-const swaggerJsdoc = require("swagger-jsdoc");
-const swaggerUi = require("swagger-ui-express");
 const dotenv = require("dotenv");
 const path = require("path");
+const swaggerJsdoc = require("swagger-jsdoc");
+const swaggerUi = require("swagger-ui-express");
 
 dotenv.config();
-const PORT = process.env.PORT || 3000;
 
 const options = {
   definition: {
@@ -17,8 +16,8 @@ const options = {
     },
     servers: [
       {
-        url: `http://localhost:${PORT}`,
-        description: "Development Server",
+        url: process.env.API_URL || `http://localhost:${process.env.PORT || 3000}`,
+        description: "Server",
       },
     ],
   },
@@ -30,6 +29,4 @@ const options = {
 };
 
 const specs = swaggerJsdoc(options);
-
-
 module.exports = { swaggerUi, specs };
